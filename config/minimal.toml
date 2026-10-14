@@ -1,0 +1,28 @@
+# The smallest useful section: a sand aquifer over clay over basement.
+# Everything not given here falls back to a sensible default, so this is close
+# to the minimum a scenario needs.
+name = "minimal"
+
+[grid]
+zmax = 120.0
+
+[[unit]]
+top = 0.0
+name = "sand aquifer"
+phi = 0.30          # porosity
+clay = 0.05         # clay fraction
+sigma_w = 0.05      # pore-water conductivity, S/m (~320 mg/L — fresh)
+
+[[unit]]
+top = 35.0
+name = "clay aquitard"
+phi = 0.40
+clay = 0.60
+sigma_w = 0.40
+
+[[unit]]
+top = 60.0
+name = "basement"
+phi = 0.03
+clay = 0.02
+sigma_w = 0.80

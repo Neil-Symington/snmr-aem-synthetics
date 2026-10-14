@@ -19,7 +19,7 @@ module SNMRAEMSynthetics
 
 using TOML, Random, Statistics, LinearAlgebra, Printf
 
-export Unit, Column, load_config, build_column, save_column
+export Unit, Column, load_config, build_column, save_column, unit_mean
 
 "One hydrogeological interval. `bot` is filled in from the next unit's top."
 struct Unit
@@ -45,6 +45,7 @@ struct Column
     σ_bulk::Vector{Float64}     # bulk conductivity — what AEM sees
     units::Vector{Unit}
     trans::Vector{Float64}      # transition thickness at each boundary (m)
+    petro::NamedTuple           # the constants actually used, defaults resolved
     cfg::Dict{String,Any}
 end
 
@@ -153,7 +154,8 @@ function build_column(units::Vector{Unit}, cfg::Dict)
     θ_SMR   = θ_total .* (1 .- clay) .^ p_clay
     σ_bulk  = σw .* θ_total .^ m .+ σ_clay .* clay
 
-    Column(z, dz, φ, S, clay, σw, θ_total, θ_SMR, σ_bulk, units, trans, cfg)
+    Column(z, dz, φ, S, clay, σw, θ_total, θ_SMR, σ_bulk, units, trans,
+           (p_clay = p_clay, m_archie = m, sigma_clay = σ_clay), cfg)
 end
 
 build_column(path::AbstractString) = build_column(load_config(path)...)
@@ -172,6 +174,8 @@ function Base.show(io::IO, c::Column)
     name = get(c.cfg, "name", "unnamed")
     @printf(io, "synthetic column \"%s\" — %d units, %.2f m grid to %.0f m\n",
             name, length(c.units), c.dz, c.z[end])
+    @printf(io, "petrophysics: p_clay %.2f, m %.2f, sigma_clay %.2f S/m\n",
+            c.petro.p_clay, c.petro.m_archie, c.petro.sigma_clay)
     @printf(io, "%-34s %6s %6s %6s %8s %9s %8s\n",
             "unit", "phi", "S", "clay", "sigma_w", "theta_SMR", "sigma_b")
     for u in c.units
@@ -189,7 +193,9 @@ function save_column(c::Column, path::AbstractString)
         z = c.z, dz = c.dz, φ = c.φ, S = c.S, clay = c.clay, σw = c.σw,
         θ_total = c.θ_total, θ_SMR = c.θ_SMR, σ_bulk = c.σ_bulk,
         units = [(u.top, u.bot, u.name) for u in c.units],
-        trans = c.trans, config = c.cfg)
+        trans = c.trans, config = c.cfg,
+        p_clay = c.petro.p_clay, m_archie = c.petro.m_archie,
+        sigma_clay = c.petro.sigma_clay)
     path
 end
 

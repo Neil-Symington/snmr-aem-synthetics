@@ -33,6 +33,21 @@ julia --project=. scripts/forward.jl     output/confined_aquifer_truth.jld2
 `build_truth.jl` prints the section as built, with the derived observables per
 unit measured clear of the gradational boundaries, and writes a JLD2.
 
+## Examples first
+
+Three short scripts in `examples/`, none longer than a few seconds and none
+needing an inversion:
+
+```bash
+julia --project=. examples/01_hello_column.jl      # smallest working section
+julia --project=. examples/02_build_in_code.jl     # same, without TOML
+julia --project=. examples/03_why_clay_matters.jl  # why conductivity != salinity
+```
+
+The third is the one to read. It infers salinity from a *perfect* conductivity
+measurement while varying only the assumed clay mineralogy, and the answer moves
+by a factor of five. See `examples/README.md`.
+
 ## Defining a scenario
 
 A scenario is one TOML file. Units are listed in order of increasing depth and
@@ -96,7 +111,8 @@ varying too.
 | `scripts/build_truth.jl` | TOML → truth column → JLD2 |
 | `scripts/forward.jl` | AEM and NMR forward responses with realistic noise |
 | `scripts/plot_truth.jl` | lithology, clay, free water and conductivity on a common depth axis |
-| `config/` | two worked scenarios |
+| `config/` | a minimal scenario plus the two realistic ones |
+| `examples/` | three short runnable demonstrations |
 
 ## Inversions
 
