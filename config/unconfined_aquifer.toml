@@ -1,0 +1,64 @@
+name = "unconfined_aquifer"
+description = """
+Unconfined fresh sand aquifer over a clay aquitard, with a saline silty unit
+beneath. Murray Basin western-margin analogue (Loxton-Parilla Sands over
+Blanchetown Clay). The target is the top saturated unit with nothing conductive
+above it — the favourable case.
+"""
+
+[grid]
+dz   = 0.25
+zmax = 200.0
+
+[petrophysics]
+p_clay     = 1.5
+m_archie   = 1.7
+sigma_clay = 0.5
+
+[variability]
+seed            = 20261012
+corr_length     = 6.0
+log_sd_phi      = 0.10
+log_sd_clay     = 0.15
+transition_min  = 3.0
+transition_max  = 6.0
+
+[watertable]
+depth      = 6.0    # m below surface
+fringe     = 0.8    # m capillary rise above the water table
+s_residual = 0.10   # saturation through the vadose zone
+
+[[unit]]
+top = 0.0
+name = "Woorinen Fm sand, unsaturated"
+phi = 0.33
+clay = 0.06
+sigma_w = 0.03
+
+[[unit]]
+top = 6.0
+name = "Loxton–Parilla Sands — AQUIFER"
+phi = 0.32
+clay = 0.05
+sigma_w = 0.03          # very fresh, ~190 mg/L
+
+[[unit]]
+top = 40.0
+name = "Blanchetown Clay — AQUITARD"
+phi = 0.40
+clay = 0.55
+sigma_w = 0.40
+
+[[unit]]
+top = 58.0
+name = "Renmark Gp, sand/silt"
+phi = 0.20
+clay = 0.25
+sigma_w = 0.60
+
+[[unit]]
+top = 88.0
+name = "Palaeozoic basement"
+phi = 0.04
+clay = 0.03
+sigma_w = 0.80

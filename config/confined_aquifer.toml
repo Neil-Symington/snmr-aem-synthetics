@@ -1,0 +1,93 @@
+name = "confined_aquifer"
+description = """
+Fresh sand aquifer confined between a clay cap and a clay aquitard, with a
+brackish sand aquifer beneath. Riverine Plain (Murray Basin) analogue.
+The target is a resistive unit enclosed by conductors — the hard case for
+inferring salinity from conductivity.
+"""
+
+[grid]
+dz   = 0.25        # fine grid spacing (m)
+zmax = 200.0       # bottom of the model (m)
+
+[petrophysics]
+p_clay     = 1.5   # exponent in theta_SMR = phi*S*(1-clay)^p_clay
+m_archie   = 1.7   # cementation exponent in sigma_w * theta^m
+sigma_clay = 0.5   # S/m per unit clay fraction (surface conduction).
+                   # ~0.15 kaolinite, ~0.5 illite, ~2.0 smectite. This constant
+                   # does a great deal of work — vary it to test sensitivity.
+
+[variability]
+seed            = 20261012
+corr_length     = 6.0    # m, correlation length of the porosity/clay jitter
+log_sd_phi      = 0.10
+log_sd_clay     = 0.15
+transition_min  = 3.0    # m, gradational boundary thickness, drawn U(min,max)
+transition_max  = 6.0
+
+# No [watertable] block: this column is saturated below a thin surface layer,
+# so each unit's own S applies.
+
+[[unit]]
+top = 0.0
+name = "Shepparton Fm, unsaturated"
+phi = 0.33
+S = 1.0
+clay = 0.40
+sigma_w = 0.05
+
+[[unit]]
+top = 4.0
+name = "Shepparton Fm, clay cap"
+phi = 0.35
+S = 1.0
+clay = 0.45
+sigma_w = 0.05
+
+[[unit]]
+top = 18.0
+name = "Calivil Fm — AQUIFER 1"
+phi = 0.30
+S = 1.0
+clay = 0.08
+sigma_w = 0.08          # fresh, ~520 mg/L
+
+[[unit]]
+top = 34.0
+name = "clay aquitard — CONFINING"
+phi = 0.42
+S = 1.0
+clay = 0.65
+sigma_w = 0.30
+
+[[unit]]
+top = 46.0
+name = "Renmark Gp — AQUIFER 2"
+phi = 0.28
+S = 1.0
+clay = 0.10
+sigma_w = 0.60          # brackish, ~3,800 mg/L
+
+[[unit]]
+top = 62.0
+name = "weathered Palaeozoic"
+phi = 0.12
+S = 1.0
+clay = 0.30
+sigma_w = 1.00
+
+[[unit]]
+top = 78.0
+name = "saprock"
+phi = 0.06
+S = 1.0
+clay = 0.12
+sigma_w = 1.20
+
+[[unit]]
+top = 85.0
+name = "unweathered Palaeozoic"
+phi = 0.02
+S = 1.0
+clay = 0.03
+sigma_w = 1.50
