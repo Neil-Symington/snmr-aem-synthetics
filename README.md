@@ -50,47 +50,59 @@ by a factor of five. See `examples/README.md`.
 
 ## Defining a scenario
 
-A scenario is one TOML file. Units are listed in order of increasing depth and
-each runs down to the next one's top; the last extends to `grid.zmax`.
+A scenario is one TOML file. Units are contiguous and listed top down. Give each
+one a `thickness` and the tops accumulate automatically, or give `top` on every
+unit, or mix the two — they are checked against each other.
 
 ```toml
-name = "my_section"
-
-[grid]
-dz   = 0.25
-zmax = 200.0
-
-[petrophysics]
-p_clay     = 1.5    # bound-water exponent
-m_archie   = 1.7    # cementation exponent
-sigma_clay = 0.5    # S/m per unit clay fraction (surface conduction)
-
-[variability]
-seed           = 20261012
-corr_length    = 6.0     # m, correlation length of the porosity/clay jitter
-log_sd_phi     = 0.10
-log_sd_clay    = 0.15
-transition_min = 3.0     # gradational boundary thickness, drawn U(min,max)
-transition_max = 6.0
-
-[watertable]             # optional; omit for a saturated column
-depth      = 6.0
-fringe     = 0.8
-s_residual = 0.10
-
 [[unit]]
-top = 0.0
-name = "sand, unsaturated"
-phi = 0.33
-clay = 0.06
-sigma_w = 0.03
-# ... more units
+name = "target aquifer"
+lithology = "sand"        # fills porosity and clay from the preset table
+thickness = 22.0          # m
+phi = 0.31                # override the preset wherever you know better
+sigma_w_mgL = 520         # salinity in mg/L, or sigma_w in S/m
+sd_phi = 0.05             # this unit is more uniform than the section default
 ```
 
-Two worked examples are in `config/`: a **confined** aquifer enclosed by clay
-above and below, and an **unconfined** aquifer that is the top saturated unit.
-They differ mainly in where the target sits relative to the conductors, which
-turns out to matter a great deal.
+`config/template.toml` shows every option with commentary. Three things worth
+knowing:
+
+**Lithology presets** fill porosity and clay so you can write the section in the
+terms you actually know. Available: `gravel`, `clean sand`, `sand`, `silty
+sand`, `sandy clay`, `clay`, `weathered bedrock`, `saprock`, `fresh bedrock`.
+They are indicative starting points, not measurements — anything you state
+explicitly wins.
+
+**The truth is jiggled, not piecewise constant.** Each property gets a smooth,
+depth-correlated field scaled by a log-normal spread, so a unit varies around
+the value you gave rather than being a flat slab. Spreads can be set section
+wide in `[variability]`, per lithology (a clean sand is more uniform than a
+weathered profile), or per unit. Porosity and clay vary by default; pore-water
+conductivity does **not**, so salinity stays exactly as stated unless you set
+`log_sd_sigma_w`.
+
+**Boundaries are gradational**, over a thickness drawn uniformly between
+`transition_min` and `transition_max`, so no contact is artificially sharp.
+
+### Is your section a fair test?
+
+`build_truth.jl` runs `check_column` and prints a conductivity budget — how much
+of each unit's conductivity is carried by pore water and how much by clay
+surfaces — then flags the mistakes that look fine on paper:
+
+- a target where clay carries most of the conductivity, with the error
+  amplification quoted, so you know before inverting how sensitive the salinity
+  answer will be;
+- adjacent units that both clear the extractable bar and so will be detected as
+  **one** aquifer rather than two;
+- a large salinity step across permeable ground with no confining layer;
+- pore water freshening with depth;
+- a target that is a resistor enclosed by conductors — the case where airborne
+  EM resolves the unit poorly and the salinity may be set by the regularisation
+  rather than the data.
+
+On `config/confined_aquifer.toml` it independently identifies the two findings
+that took a week to establish empirically.
 
 ### The constants are not innocent
 
@@ -106,12 +118,13 @@ varying too.
 
 | | |
 |---|---|
-| `src/SNMRAEMSynthetics.jl` | the column builder: config → gradational boundaries → correlated variability → rock physics |
+| `src/SNMRAEMSynthetics.jl` | the column builder: config → geometry → correlated variability → rock physics, plus `check_column` |
+| `src/Lithology.jl` | porosity and clay presets by material, and mg/L ↔ S/m |
 | `src/aem_setup.jl` | SkyTEM-class AEM geometry and AusAEM-standard noise, via HiQGA |
 | `scripts/build_truth.jl` | TOML → truth column → JLD2 |
 | `scripts/forward.jl` | AEM and NMR forward responses with realistic noise |
 | `scripts/plot_truth.jl` | lithology, clay, free water and conductivity on a common depth axis |
-| `config/` | a minimal scenario plus the two realistic ones |
+| `config/` | a minimal scenario, a fully commented template, and the two realistic ones |
 | `examples/` | three short runnable demonstrations |
 
 ## Inversions

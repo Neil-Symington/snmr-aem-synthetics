@@ -17,6 +17,7 @@ mkpath(outdir)
 units, cfg = load_config(cfgpath)
 col = build_column(units, cfg)
 show(stdout, col)
+check_column(col)
 
 name = get(cfg, "name", splitext(basename(cfgpath))[1])
 out  = joinpath(outdir, "$(name)_truth.jld2")

@@ -19,9 +19,20 @@ module SNMRAEMSynthetics
 
 using TOML, Random, Statistics, LinearAlgebra, Printf
 
-export Unit, Column, load_config, build_column, save_column, unit_mean
+include("Lithology.jl")
 
-"One hydrogeological interval. `bot` is filled in from the next unit's top."
+export Unit, Column, load_config, build_column, save_column, unit_mean,
+       check_column, lithology_names, mgL_to_sigma, sigma_to_mgL
+
+"""
+One hydrogeological interval.
+
+Geometry can be given as `top` (bottom taken from the next unit) or as
+`thickness` (tops accumulated down the section), or both if they agree. The
+`sd_*` fields are per-unit log-normal spreads for the depth-correlated jitter —
+a clean sand is far more uniform than a weathered profile, so one global number
+for the whole section is usually wrong.
+"""
 struct Unit
     top::Float64
     bot::Float64
@@ -30,7 +41,11 @@ struct Unit
     S::Float64
     clay::Float64
     σw::Float64
+    sd_φ::Float64
+    sd_clay::Float64
+    sd_σw::Float64
 end
+thickness(u::Unit) = u.bot - u.top
 
 "A built synthetic column on a fine depth grid."
 struct Column
@@ -51,22 +66,74 @@ end
 
 # ── config ──────────────────────────────────────────────────────────────────
 
-"Read a TOML scenario file and return (units, cfg)."
+"""
+    load_config(path) -> (units, cfg)
+
+Read a TOML scenario. Each `[[unit]]` may give its material as `lithology`
+(filling porosity and clay from the preset table), its salinity as `sigma_w`
+in S/m or `sigma_w_mgL` in mg/L, and its geometry as `top`, `thickness`, or
+both. Anything stated explicitly wins over the preset.
+"""
 function load_config(path::AbstractString)
     cfg = TOML.parsefile(path)
     haskey(cfg, "unit") || error("$path: no [[unit]] entries")
-    raw = cfg["unit"]
+    raw  = cfg["unit"]
     zmax = get(get(cfg, "grid", Dict()), "zmax", 200.0)
-    tops = Float64[u["top"] for u in raw]
-    issorted(tops) || error("[[unit]] entries must be in order of increasing top depth")
+    v    = get(cfg, "variability", Dict())
+    gsdφ = get(v, "log_sd_phi", 0.10)
+    gsdc = get(v, "log_sd_clay", 0.15)
+    gsdw = get(v, "log_sd_sigma_w", 0.0)   # off by default: keeps σ_w exactly as stated
+
+    # ── geometry: resolve tops and bottoms from `top`, `thickness`, or both
+    n = length(raw)
+    tops = Vector{Float64}(undef, n); bots = Vector{Float64}(undef, n)
+    cursor = get(raw[1], "top", 0.0)
+    for (i, u) in enumerate(raw)
+        nm = get(u, "name", "unit $i")
+        t  = get(u, "top", cursor)
+        if haskey(u, "top") && abs(t - cursor) > 1e-6 && i > 1
+            error("unit \"$nm\": top $(t) m does not meet the previous unit's " *
+                  "base at $(round(cursor, digits=3)) m — units must be contiguous")
+        end
+        th = get(u, "thickness", nothing)
+        b  = th === nothing ? nothing : t + th
+        tops[i] = t; bots[i] = b === nothing ? NaN : b
+        cursor  = b === nothing ? NaN : b
+        if b === nothing && i < n
+            haskey(raw[i+1], "top") || error("unit \"$nm\": give it a `thickness`, " *
+                "or give the next unit a `top` — otherwise its base is undefined")
+            cursor = raw[i+1]["top"]; bots[i] = cursor
+        end
+    end
+    isnan(bots[n]) && (bots[n] = zmax)          # last unit runs to the model base
+    bots[n] > zmax && error("the section is $(bots[n]) m deep but grid.zmax is $zmax m")
+    for i in 1:n
+        bots[i] > tops[i] || error("unit \"$(get(raw[i],"name","unit $i"))\" has " *
+                                   "non-positive thickness ($(tops[i]) to $(bots[i]) m)")
+    end
+
+    # ── properties
     units = Unit[]
     for (i, u) in enumerate(raw)
-        bot = i < length(raw) ? raw[i+1]["top"] : zmax
-        for k in ("phi", "clay", "sigma_w")
-            haskey(u, k) || error("unit '$(get(u,"name","?"))' is missing `$k`")
-        end
-        push!(units, Unit(u["top"], bot, get(u, "name", "unit $i"),
-                          u["phi"], get(u, "S", 1.0), u["clay"], u["sigma_w"]))
+        nm   = get(u, "name", "unit $i")
+        pre  = haskey(u, "lithology") ? lithology(u["lithology"]) :
+               (φ = NaN, clay = NaN, sd_φ = gsdφ, sd_clay = gsdc)
+        φ    = get(u, "phi",  pre.φ)
+        clay = get(u, "clay", pre.clay)
+        isnan(φ)    && error("unit \"$nm\": needs `phi` or a `lithology`")
+        isnan(clay) && error("unit \"$nm\": needs `clay` or a `lithology`")
+        σw = haskey(u, "sigma_w")     ? u["sigma_w"] :
+             haskey(u, "sigma_w_mgL") ? mgL_to_sigma(u["sigma_w_mgL"]) :
+             error("unit \"$nm\": needs `sigma_w` (S/m) or `sigma_w_mgL`")
+        haskey(u, "sigma_w") && haskey(u, "sigma_w_mgL") &&
+            error("unit \"$nm\": give `sigma_w` or `sigma_w_mgL`, not both")
+        0 < φ < 1     || error("unit \"$nm\": phi $φ is not in (0,1)")
+        0 <= clay <= 1 || error("unit \"$nm\": clay $clay is not in [0,1]")
+        σw > 0        || error("unit \"$nm\": sigma_w must be positive")
+        push!(units, Unit(tops[i], bots[i], nm, φ, get(u, "S", 1.0), clay, σw,
+                          get(u, "sd_phi",     haskey(u,"lithology") ? pre.sd_φ    : gsdφ),
+                          get(u, "sd_clay",    haskey(u,"lithology") ? pre.sd_clay : gsdc),
+                          get(u, "sd_sigma_w", gsdw)))
     end
     units, cfg
 end
@@ -136,7 +203,6 @@ function build_column(units::Vector{Unit}, cfg::Dict)
     σ_clay = get(p, "sigma_clay", 0.5)
     v  = get(cfg, "variability", Dict())
     seed = get(v, "seed", 1); corr = get(v, "corr_length", 6.0)
-    sdφ = get(v, "log_sd_phi", 0.10); sdc = get(v, "log_sd_clay", 0.15)
     tmin = get(v, "transition_min", 3.0); tmax = get(v, "transition_max", 6.0)
 
     Random.seed!(seed)
@@ -147,12 +213,20 @@ function build_column(units::Vector{Unit}, cfg::Dict)
     σw   = unit_field(z, units, trans, u -> u.σw)
     S    = sat_field(z, units, trans, get(cfg, "watertable", nothing))
 
-    φ    = clamp.(φ0    .* exp.(gp_draw(z; corr = corr, seed = seed + 1) * sdφ), 0.005, 0.5)
-    clay = clamp.(clay0 .* exp.(gp_draw(z; corr = corr, seed = seed + 2) * sdc), 0.0, 1.0)
+    # Per-unit spreads, carried down the section as a depth profile, so a clean
+    # sand can be uniform while a weathered profile is not. One correlated field
+    # per property, scaled by the local spread.
+    sdφ_z = unit_field(z, units, trans, u -> u.sd_φ)
+    sdc_z = unit_field(z, units, trans, u -> u.sd_clay)
+    sdw_z = unit_field(z, units, trans, u -> u.sd_σw)
+
+    φ    = clamp.(φ0    .* exp.(gp_draw(z; corr = corr, seed = seed + 1) .* sdφ_z), 0.005, 0.5)
+    clay = clamp.(clay0 .* exp.(gp_draw(z; corr = corr, seed = seed + 2) .* sdc_z), 0.0, 1.0)
+    σw   = σw           .* exp.(gp_draw(z; corr = corr, seed = seed + 3) .* sdw_z)
 
     θ_total = φ .* S
-    θ_SMR   = θ_total .* (1 .- clay) .^ p_clay
-    σ_bulk  = σw .* θ_total .^ m .+ σ_clay .* clay
+    θ_SMR   = θ_total .* (1 .- clay) .^ p_clay      # free water: NMR sees this
+    σ_bulk  = σw .* θ_total .^ m .+ σ_clay .* clay  # bulk conductivity: AEM sees this
 
     Column(z, dz, φ, S, clay, σw, θ_total, θ_SMR, σ_bulk, units, trans,
            (p_clay = p_clay, m_archie = m, sigma_clay = σ_clay), cfg)
@@ -184,6 +258,102 @@ function Base.show(io::IO, c::Column)
                 unit_mean(c, c.φ, u), unit_mean(c, c.S, u), unit_mean(c, c.clay, u),
                 unit_mean(c, c.σw, u), unit_mean(c, c.θ_SMR, u), unit_mean(c, c.σ_bulk, u))
     end
+end
+
+
+# ── is this section a fair test? ────────────────────────────────────────────
+
+"""
+    check_column(c; theta_bar = 0.15, io = stdout) -> Vector{String}
+
+Report whether the section is a meaningful test and flag the mistakes that look
+fine on paper. Returns the list of warnings so a script can fail on them.
+
+What it reports per unit: the split of bulk conductivity into the part carried
+by pore water and the part carried by clay surfaces — which is what decides
+whether salinity is recoverable at all — and whether the unit clears the
+extractable bar on free water.
+"""
+function check_column(c::Column; theta_bar = 0.15, io = stdout)
+    warn = String[]
+    σc, m = c.petro.sigma_clay, c.petro.m_archie
+    us = [u for u in c.units if thickness(u) >= 2.0]
+
+    println(io, "\nconductivity budget and extractability")
+    @printf(io, "%-30s %9s %9s %8s %9s %12s\n",
+            "unit", "sigma_b", "clay term", "clay %", "theta_SMR", "extractable")
+    info = NamedTuple[]
+    for u in us
+        σb = unit_mean(c, c.σ_bulk, u); θ = unit_mean(c, c.θ_SMR, u)
+        cl = unit_mean(c, c.clay, u);   sw = unit_mean(c, c.σw, u)
+        ct = σc * cl; pct = 100ct / σb
+        ex = θ > theta_bar
+        @printf(io, "%-30s %9.4f %9.4f %7.0f%% %9.3f %12s\n",
+                u.name, σb, ct, pct, θ, ex ? "yes" : "no")
+        push!(info, (u = u, σb = σb, θ = θ, clay = cl, σw = sw, claypct = pct, ex = ex))
+    end
+
+    # salinity is only recoverable where the water carries a real share of σ_b
+    for r in info
+        r.ex || continue
+        # High clay share is necessary but not sufficient for the salinity to be
+        # unrecoverable — it can still work if the conductivity itself is well
+        # resolved. State the sensitivity rather than predict the outcome.
+        amp = 1 / unit_mean(c, c.φ, r.u)^m
+        r.claypct > 75 && push!(warn,
+            "$(r.u.name): clay carries $(round(Int, r.claypct)) % of the conductivity, " *
+            "leaving $(round(100 - r.claypct, digits = 1)) % to carry the salinity. " *
+            "Recovering sigma_w divides that residual by phi^m, amplifying any error " *
+            "$(round(amp, digits = 1))x, so the answer will be sensitive both to " *
+            "conductivity error and to the assumed clay mineralogy (see examples/03)")
+    end
+
+    # adjacent extractable units with nothing between them are ONE aquifer
+    for i in 1:length(info)-1
+        info[i].ex && info[i+1].ex && push!(warn,
+            "$(info[i].u.name) and $(info[i+1].u.name) both clear the " *
+            "theta > $theta_bar bar and are adjacent — they will be detected as a " *
+            "single unit, not two. Put a low-porosity or clay-rich interval between them.")
+    end
+
+    # a salinity step across permeable ground with no aquitard is not hydrogeology
+    for i in 1:length(info)-1
+        a, b = info[i], info[i+1]
+        (a.ex && b.ex) || continue
+        ratio = max(a.σw, b.σw) / min(a.σw, b.σw)
+        ratio > 3 && push!(warn,
+            "pore-water conductivity steps $(round(ratio, digits = 1))x between " *
+            "$(a.u.name) and $(b.u.name), both permeable and in contact — " *
+            "a step that large normally needs a confining layer to maintain")
+    end
+
+    # salinity usually increases down a flow path
+    for i in 1:length(info)-1
+        info[i].σw > info[i+1].σw + 1e-9 && push!(warn,
+            "pore water freshens with depth from $(info[i].u.name) to " *
+            "$(info[i+1].u.name) ($(round(info[i].σw, digits=3)) to " *
+            "$(round(info[i+1].σw, digits=3)) S/m) — possible, but check it is intended")
+    end
+
+    # is the target enclosed by conductors? that is what decides water quality
+    for i in 2:length(info)-1
+        r = info[i]; r.ex || continue
+        above, below = info[i-1].σb, info[i+1].σb
+        (above > 2r.σb && below > 2r.σb) && push!(warn,
+            "$(r.u.name) is a resistor enclosed by conductors " *
+            "($(round(above, digits=3)) above, $(round(below, digits=3)) below, " *
+            "unit itself $(round(r.σb, digits=3)) S/m) — the hard case: airborne EM " *
+            "resolves such a unit poorly and its salinity may be set by the " *
+            "regularisation rather than the data")
+    end
+
+    if isempty(warn)
+        println(io, "\nno warnings.")
+    else
+        println(io, "\n", length(warn), " warning", length(warn) == 1 ? "" : "s", ":")
+        for w in warn; println(io, "  * ", w); end
+    end
+    warn
 end
 
 "Write the column to JLD2 for the forward-modelling and inversion steps."

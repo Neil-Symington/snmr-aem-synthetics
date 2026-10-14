@@ -1,0 +1,68 @@
+# A template showing every option. Copy this, delete what you do not need.
+#
+#   julia --project=. scripts/build_truth.jl config/template.toml
+#
+# Units are contiguous and listed top down. Give each one a `thickness` and the
+# tops accumulate automatically; or give `top` on every unit; or mix the two, in
+# which case they are checked against each other.
+
+name = "template"
+
+[grid]
+dz   = 0.25        # fine grid spacing (m)
+zmax = 150.0       # model base — must be at or below the last unit's base
+
+[petrophysics]
+p_clay     = 1.5   # theta_SMR = phi * S * (1-clay)^p_clay
+m_archie   = 1.7   # sigma_w * theta^m
+sigma_clay = 0.5   # S/m per unit clay fraction. ~0.15 kaolinite, ~0.5 illite,
+                   # ~2.0 smectite. This constant does a lot of work — see
+                   # examples/03_why_clay_matters.jl before trusting a salinity.
+
+[variability]
+# The truth is jiggled around the values you give: one smooth, depth-correlated
+# field per property, scaled by a log-normal spread. These are the section-wide
+# defaults; a lithology preset or an individual unit can override any of them.
+seed            = 20261015
+corr_length     = 6.0    # m — how quickly the jitter varies with depth
+log_sd_phi      = 0.10   # ~10 % spread on porosity
+log_sd_clay     = 0.15
+log_sd_sigma_w  = 0.0    # OFF by default, so salinity stays exactly as stated.
+                         # Set ~0.10 to let pore-water conductivity vary too.
+transition_min  = 3.0    # gradational boundary thickness, drawn U(min,max)
+transition_max  = 6.0
+
+[watertable]             # optional — omit for a saturated column
+depth      = 8.0
+fringe     = 0.8         # capillary rise above the water table (m)
+s_residual = 0.10        # saturation through the vadose zone
+
+# ── units, top down ─────────────────────────────────────────────────────────
+# Available lithologies: clay, clean sand, fresh bedrock, gravel, sand,
+# sandy clay, saprock, silty sand, weathered bedrock
+
+[[unit]]
+name = "cover sand"
+lithology = "clean sand"     # fills phi and clay from the preset
+thickness = 8.0
+sigma_w_mgL = 300            # salinity in mg/L if you prefer; or sigma_w in S/m
+
+[[unit]]
+name = "target aquifer"
+lithology = "sand"
+thickness = 22.0
+phi = 0.31                   # override the preset where you know better
+sigma_w_mgL = 520
+sd_phi = 0.05                # this unit is more uniform than the section default
+
+[[unit]]
+name = "confining clay"
+lithology = "clay"
+thickness = 15.0
+sigma_w_mgL = 2000
+
+[[unit]]
+name = "basement"
+lithology = "fresh bedrock"
+sigma_w_mgL = 5000
+# no thickness on the last unit: it runs to grid.zmax
