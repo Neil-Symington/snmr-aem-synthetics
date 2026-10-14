@@ -113,11 +113,17 @@ Pkg.add(url = "https://github.com/Neil-Symington/SMRPInversion.jl",
         rev = "add-occam-deterministic-inversion")
 ```
 
-> **Not yet usable.** As of writing, `src/SMRPInversion.jl` on that branch does
-> `include("HierarchicalNoise.jl")` for a file that has never been committed, so
-> a fresh clone fails to load. `HierarchicalNoise.jl` and `BootstrapInversion.jl`
-> are both untracked locally. They need to be committed and pushed before this
-> step works for anyone else.
+Verified to install and load from a clean environment. `HierarchicalNoise.jl`
+and `BootstrapInversion.jl` were untracked upstream until October 2026 — the
+module included files that had never been committed, so a fresh clone failed to
+load. That is fixed on the branch above.
+
+What the hierarchical noise model does: the per-gate variance shape is held
+fixed and only its scalar scale is sampled, jointly with the water content, as a
+nuisance parameter. The inversion therefore learns its own noise level rather
+than being handed one. That matters because an assumed noise level that is too
+low manufactures structure and one that is too high erases it — and on field
+data you do not know which you have.
 
 ## A known trap
 
