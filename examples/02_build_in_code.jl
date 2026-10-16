@@ -10,7 +10,8 @@
 include(joinpath(@__DIR__, "..", "src", "SNMRAEMSynthetics.jl"))
 using .SNMRAEMSynthetics, Printf
 
-# Unit(top, bot, name, phi, S, clay, sigma_w)
+# Unit(top, bot, name, phi, S, clay, sigma_w; sd_phi, sd_clay, sd_sigma_w, cec)
+# — the keyword arguments are optional and fall back to the section defaults
 units = [
     Unit( 0.0, 25.0, "sand aquifer",  0.30, 1.0, 0.05, 0.05),
     Unit(25.0, 50.0, "clay aquitard", 0.40, 1.0, 0.60, 0.40),

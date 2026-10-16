@@ -14,6 +14,26 @@ the two observables:
 σ_bulk = σ_w · θ_total^m + σ_clay · clay    conductivity, what AEM sees
 ```
 
+Those are the defaults (Simandoux 1963 for conductivity). Both relations have
+a second, CEC-based form you can switch on in `[petrophysics]`:
+
+```
+σ_bulk = φ^m S^n (σ_w + B·Q_v / S)          model = "waxman_smits"   (Waxman & Smits 1968)
+θ_SMR  = φ·S − φ·v_Q·Q_v                   smr_model = "dual_water" (Clavier et al. 1984)
+```
+
+with `Q_v = CEC·ρ_g·(1−φ)/φ`. The dual-water form removes only the
+diffuse-layer water, a lower bound on what NMR cannot see (small-pore water
+below the dead time is also lost), so it leaves clay-rich units with too much
+free water; the empirical power form stays the default. For conductivity the
+difference matters: the Simandoux clay term
+is not scaled by porosity or saturation, so dry sand and fresh bedrock keep a
+conductivity floor of `σ_clay·clay` (tens of Ωm) that Waxman–Smits does not
+give them, and in a saturated sand the clay share of conductivity is set by
+CEC rather than by a bare conductivity constant, so it can be argued from
+published mineralogy. `check_column` reports the water/clay split under
+whichever model is active; run both before drawing a conclusion.
+
 The second relation is the reason this repo exists. One measurement, two
 unknowns: a conductive layer may be salty or merely clayey, and EM alone cannot
 tell you which. NMR's water content constrains clay from above, because clay
@@ -104,6 +124,15 @@ surfaces — then flags the mistakes that look fine on paper:
 On `config/confined_aquifer.toml` it independently identifies the two findings
 that took a week to establish empirically.
 
+### Noise
+
+`scripts/forward.jl` adds Gaussian noise to the SMR amplitude by default
+(`smr.noise_domain = "amplitude"`), which is the high-SNR limit. Set
+`"complex"` to add noise to both quadratures and take the modulus, which gives
+the Rician amplitude statistics real data have (biased high by ≈14 % at SNR 2).
+The default `noise_nV = 4.63` is a quiet site; set it from a measured record.
+AEM noise is `(noise_frac·|dB/dt|)² + halt²` with `aem.noise_frac = 0.03`.
+
 ### The constants are not innocent
 
 `sigma_clay` is an effective surface conductivity per unit clay fraction, and it
@@ -153,6 +182,20 @@ nuisance parameter. The inversion therefore learns its own noise level rather
 than being handed one. That matters because an assumed noise level that is too
 low manufactures structure and one that is too high erases it — and on field
 data you do not know which you have.
+
+## References
+
+- Archie, G.E. (1942). The electrical resistivity log as an aid in determining some reservoir characteristics. *Trans. AIME* 146, 54–62.
+- Simandoux, P. (1963). Mesures diélectriques en milieu poreux, application à la mesure des saturations en eau. *Rev. Inst. Fr. Pét.* 18(S1), 193–215.
+- Waxman, M.H. & Smits, L.J.M. (1968). Electrical conductivities in oil-bearing shaly sands. *SPE J.* 8, 107–122.
+- Waxman, M.H. & Thomas, E.C. (1974). Electrical conductivities in shaly sands: I. The relation between hydrocarbon saturation and resistivity index; II. The temperature coefficient of electrical conductivity. *J. Pet. Technol.* 26, 213–225.
+- Clavier, C., Coates, G. & Dumanoir, J. (1984). Theoretical and experimental bases for the dual-water model for interpretation of shaly sands. *SPE J.* 24, 153–168.
+- Revil, A., Cathles, L.M., Losh, S. & Nunn, J.A. (1998). Electrical conductivity in shaly sands with geophysical applications. *JGR* 103, 23925–23936.
+- Grunewald, E. & Knight, R. (2011). A laboratory study of NMR relaxation times and pore coupling in heterogeneous media. *Geophysics* 76, G73–G83.
+- Behroozmand, A.A., Keating, K. & Auken, E. (2015). A review of the principles and applications of the NMR technique for near-surface characterization. *Surv. Geophys.* 36, 27–85.
+- Hem, J.D. (1985). Study and interpretation of the chemical characteristics of natural water. USGS Water-Supply Paper 2254.
+- Rice, S.O. (1944). Mathematical analysis of random noise. *Bell Syst. Tech. J.* 23, 282–332.
+- Ray, A. & Myer, D. (2019). Bayesian geophysical inversion with trans-dimensional Gaussian process machine learning. *GJI* 217, 1706–1726.
 
 ## A known trap
 
