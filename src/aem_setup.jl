@@ -3,6 +3,11 @@
 # Build a SkyTEM AEM operator for a given σ(z) truth model from a PETRO
 # scenario JLD2. Uses the AusAEM-realistic electronics_halt noise pattern
 # adapted from HiQGA/examples/SkyTEM1D/synth/McMC/electronics_halt.jl.
+#
+# Noise model (HiQGA makenoisydata!): σ_gate² = (noisefrac·|dB/dt|)² + σ_halt²,
+# i.e. a multiplicative floor plus the additive late-time (electronics) noise.
+# Trans-D GP prior and parallel tempering: Ray & Myer (2019), GJI 217,
+# 1706–1726; Ray et al. (2013), Geophysics 78, E271–E280.
 
 using HiQGA
 using HiQGA.transD_GP, JLD2, Random, LinearAlgebra, Statistics
@@ -59,15 +64,17 @@ function build_aem_grid()
 end
 
 """
-    build_skytem_operator(σ_smr, zbnd_smr; noise_scale=1.0, rseed_noise=47)
+    build_skytem_operator(σ_smr, zbnd_smr; noise_scale=1.0, noisefrac=0.03, rseed_noise=47)
 
 Build a SkyTEM `dBzdt` operator with the σ(z) truth interpolated onto the
-AEM depth grid, forward-modelled, and noise added.
+AEM depth grid, forward-modelled, and noise added. `noise_scale` multiplies
+the additive halt noise, `noisefrac` is the multiplicative floor.
 
 Returns `(aem, aem_grid, ρ_aem_truth, σ_aem_truth)`.
 """
 function build_skytem_operator(σ_smr::AbstractVector, zbnd_smr::AbstractVector;
-                               noise_scale::Real = 1.0, rseed_noise::Int = 47)
+                               noise_scale::Real = 1.0, noisefrac::Real = 0.03,
+                               rseed_noise::Int = 47)
     aem_grid = build_aem_grid()
 
     # Interpolate truth σ onto AEM grid, invert to ρ
@@ -91,7 +98,7 @@ function build_skytem_operator(σ_smr::AbstractVector, zbnd_smr::AbstractVector;
     # so a preceding Random.seed! has no effect. It must be passed through, or
     # every "different" seed gives byte-identical data.
     transD_GP.SkyTEM1DInversion.makenoisydata!(aem, log10.(ρ_aem_truth[2:end]);
-        rseed = rseed_noise, showplot = false,
+        rseed = rseed_noise, showplot = false, noisefrac = noisefrac,
         σ_halt_low = LM_noise_scaled, σ_halt_high = HM_noise_scaled, units = 1e-12)
 
     (aem = aem, grid = aem_grid, ρ_aem_truth = ρ_aem_truth, σ_aem_truth = σ_aem_truth)
