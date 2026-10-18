@@ -13,11 +13,33 @@ dz   = 0.25        # fine grid spacing (m)
 zmax = 150.0       # model base — must be at or below the last unit's base
 
 [petrophysics]
-p_clay     = 1.5   # theta_SMR = phi * S * (1-clay)^p_clay
-m_archie   = 1.7   # sigma_w * theta^m
-sigma_clay = 0.5   # S/m per unit clay fraction. ~0.15 kaolinite, ~0.5 illite,
-                   # ~2.0 smectite. This constant does a lot of work — see
-                   # examples/03_why_clay_matters.jl before trusting a salinity.
+# Bulk conductivity (what AEM sees). Two forms:
+#   "simandoux"     sigma = sigma_w theta^m + sigma_clay clay      (Simandoux 1963)
+#                   clay term in parallel, NOT scaled by porosity or saturation,
+#                   so tight or dry rock keeps a floor of sigma_clay*clay
+#   "waxman_smits"  sigma = phi^m S^n (sigma_w + B Q_v / S)        (Waxman & Smits 1968)
+#                   Q_v = CEC rho_g (1-phi)/phi, B = B(sigma_w, T); surface
+#                   conduction goes through the pore network
+model      = "simandoux"
+m_archie   = 1.7   # Archie cementation exponent
+n_sat      = 1.7   # saturation exponent (Waxman-Smits only; defaults to m)
+sigma_clay = 0.5   # Simandoux only. S/m per unit clay fraction. ~0.15 kaolinite,
+                   # ~0.5 illite, ~2.0 smectite. This constant does a lot of
+                   # work — see examples/03_why_clay_matters.jl.
+cec_clay   = 25.0  # Waxman-Smits / dual-water: CEC of the clay fraction,
+                   # meq/100 g. ~3-15 kaolinite, ~10-40 illite, ~80-150 smectite.
+                   # A unit may state its own bulk `cec` instead.
+rho_grain  = 2.65  # g/mL
+temperature_C = 25.0
+# Free water (what surface NMR sees). Two forms:
+#   "power"         theta_SMR = phi S (1-clay)^p_clay      (empirical)
+#   "dual_water"    theta_SMR = phi S - phi v_Q Q_v        (Clavier et al. 1984)
+#                   removes diffuse-layer water only — a LOWER bound on what
+#                   NMR cannot see (small-pore water below the dead time is
+#                   also lost), so clay-rich units keep too much free water
+smr_model  = "power"
+p_clay     = 1.5
+v_q        = 0.28  # mL of clay-bound water per meq, 25 C (dual_water only)
 
 [variability]
 # The truth is jiggled around the values you give: one smooth, depth-correlated
