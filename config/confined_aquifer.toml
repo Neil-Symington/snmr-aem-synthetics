@@ -13,9 +13,12 @@ zmax = 200.0       # bottom of the model (m)
 [petrophysics]
 p_clay     = 1.5   # exponent in theta_SMR = phi*S*(1-clay)^p_clay
 m_archie   = 1.7   # cementation exponent in sigma_w * theta^m
-sigma_clay = 0.5   # S/m per unit clay fraction (surface conduction).
-                   # ~0.15 kaolinite, ~0.5 illite, ~2.0 smectite. This constant
-                   # does a great deal of work — vary it to test sensitivity.
+sigma_clay = 0.5   # SECTION DEFAULT only, for units naming neither a mineral
+                   # nor a lithology. Surface conduction is per unit: set
+                   # `clay_mineral` (kaolinite / illite / smectite / mixed) or
+                   # `sigma_clay` on each unit instead. One value for a whole
+                   # section gives a clean kaolinitic sand the same surface
+                   # conduction as a smectitic clay — about 10x wrong.
 
 [variability]
 seed            = 20261012
@@ -31,6 +34,9 @@ transition_max  = 6.0
 [[unit]]
 top = 0.0
 name = "Shepparton Fm, unsaturated"
+clay_mineral = "mixed"   # Riverine Plain cracking clay; smectite-bearing but
+                         # mixed-layer — pure smectite (2.0 S/m) would put this
+                         # unit near 0.9 S/m, well above what the basin shows
 phi = 0.33
 S = 1.0
 clay = 0.40
@@ -39,6 +45,7 @@ sigma_w = 0.05
 [[unit]]
 top = 4.0
 name = "Shepparton Fm, clay cap"
+clay_mineral = "mixed"   # floodplain clay, high activity
 phi = 0.35
 S = 1.0
 clay = 0.45
@@ -47,6 +54,7 @@ sigma_w = 0.05
 [[unit]]
 top = 18.0
 name = "Calivil Fm — AQUIFER 1"
+clay_mineral = "kaolinite"   # highland-derived quartz sand and gravel
 phi = 0.30
 S = 1.0
 clay = 0.08
@@ -55,6 +63,7 @@ sigma_w = 0.08          # fresh, ~520 mg/L
 [[unit]]
 top = 34.0
 name = "clay aquitard — CONFINING"
+clay_mineral = "mixed"   # lacustrine-floodplain clay
 phi = 0.42
 S = 1.0
 clay = 0.65
@@ -63,6 +72,7 @@ sigma_w = 0.30
 [[unit]]
 top = 46.0
 name = "Renmark Gp — AQUIFER 2"
+clay_mineral = "kaolinite"   # fluvial sand, some lignite
 phi = 0.28
 S = 1.0
 clay = 0.10
@@ -71,6 +81,7 @@ sigma_w = 0.60          # brackish, ~3,800 mg/L
 [[unit]]
 top = 62.0
 name = "weathered Palaeozoic"
+clay_mineral = "kaolinite"   # saprolite on a weathered granitic terrain
 phi = 0.12
 S = 1.0
 clay = 0.30
@@ -79,6 +90,7 @@ sigma_w = 1.00
 [[unit]]
 top = 78.0
 name = "saprock"
+clay_mineral = "kaolinite"
 phi = 0.06
 S = 1.0
 clay = 0.12
@@ -87,6 +99,7 @@ sigma_w = 1.20
 [[unit]]
 top = 85.0
 name = "unweathered Palaeozoic"
+clay_mineral = "kaolinite"
 phi = 0.02
 S = 1.0
 clay = 0.03

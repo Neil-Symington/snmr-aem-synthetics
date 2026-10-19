@@ -13,7 +13,7 @@ zmax = 200.0
 [petrophysics]
 p_clay     = 1.5
 m_archie   = 1.7
-sigma_clay = 0.5
+sigma_clay = 0.5   # section default only; units below name their mineral
 
 [variability]
 seed            = 20261012
@@ -31,6 +31,7 @@ s_residual = 0.10   # saturation through the vadose zone
 [[unit]]
 top = 0.0
 name = "Woorinen Fm sand, unsaturated"
+clay_mineral = "kaolinite"   # aeolian quartz sand
 phi = 0.33
 clay = 0.06
 sigma_w = 0.03
@@ -38,6 +39,7 @@ sigma_w = 0.03
 [[unit]]
 top = 6.0
 name = "Loxton–Parilla Sands — AQUIFER"
+clay_mineral = "kaolinite"   # marginal-marine quartz sand, highland-derived
 phi = 0.32
 clay = 0.05
 sigma_w = 0.03          # very fresh, ~190 mg/L
@@ -45,6 +47,10 @@ sigma_w = 0.03          # very fresh, ~190 mg/L
 [[unit]]
 top = 40.0
 name = "Blanchetown Clay — AQUITARD"
+clay_mineral = "mixed"   # lacustrine, Lake Bungunnia — the most smectitic unit
+                         # in this section. "smectite" (2.0 S/m) would put it
+                         # near 1.4 S/m, above what the basin typically shows;
+                         # switching it is the obvious sensitivity test
 phi = 0.40
 clay = 0.55
 sigma_w = 0.40
@@ -52,6 +58,7 @@ sigma_w = 0.40
 [[unit]]
 top = 58.0
 name = "Renmark Gp, sand/silt"
+clay_mineral = "illite"   # fluvial sand and silt
 phi = 0.20
 clay = 0.25
 sigma_w = 0.60
@@ -59,6 +66,7 @@ sigma_w = 0.60
 [[unit]]
 top = 88.0
 name = "Palaeozoic basement"
+clay_mineral = "kaolinite"
 phi = 0.04
 clay = 0.03
 sigma_w = 0.80

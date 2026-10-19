@@ -7,6 +7,11 @@
 # the part carried by the pore water and the part carried by clay surfaces.
 # Then asks: if you measured that conductivity perfectly but assumed the wrong
 # clay mineralogy, what salinity would you infer?
+#
+# Clay mineral is an input per unit — `clay_mineral = "kaolinite"` and so on, or
+# `sigma_clay` directly. Try changing it in config/minimal.toml and re-running:
+# the inferred salinity moves far more than most people expect, which is the
+# whole point of the example.
 
 include(joinpath(@__DIR__, "..", "src", "SNMRAEMSynthetics.jl"))
 using .SNMRAEMSynthetics, Statistics, Printf
@@ -19,7 +24,9 @@ k   = findall(z -> aq.top + 3 <= z <= aq.bot - 3, col.z)
 φ   = mean(col.φ[k]); clay = mean(col.clay[k])
 σw  = mean(col.σw[k]); σb = mean(col.σ_bulk[k]); θ = mean(col.θ_total[k])
 m   = col.petro.m_archie      # resolved by the builder, defaults and all
-σc  = col.petro.sigma_clay
+# Surface conduction is a property of THIS unit now, set by its clay mineral
+# (or stated directly). It is the single input that most changes the answer.
+σc  = aq.σ_clay
 
 water = σw * θ^m
 clayt = σc * clay

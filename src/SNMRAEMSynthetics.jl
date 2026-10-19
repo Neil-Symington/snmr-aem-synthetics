@@ -31,7 +31,9 @@ Geometry can be given as `top` (bottom taken from the next unit) or as
 `thickness` (tops accumulated down the section), or both if they agree. The
 `sd_*` fields are per-unit log-normal spreads for the depth-correlated jitter —
 a clean sand is far more uniform than a weathered profile, so one global number
-for the whole section is usually wrong.
+for the whole section is usually wrong. `σ_clay` is likewise per unit: clay
+conducts at its surfaces in proportion to cation exchange capacity, which
+differs by more than ten times between kaolinite and smectite.
 """
 struct Unit
     top::Float64
@@ -44,6 +46,7 @@ struct Unit
     sd_φ::Float64
     sd_clay::Float64
     sd_σw::Float64
+    σ_clay::Float64             # clay surface conductivity, S/m per unit clay
 end
 thickness(u::Unit) = u.bot - u.top
 
@@ -83,6 +86,9 @@ function load_config(path::AbstractString)
     gsdφ = get(v, "log_sd_phi", 0.10)
     gsdc = get(v, "log_sd_clay", 0.15)
     gsdw = get(v, "log_sd_sigma_w", 0.0)   # off by default: keeps σ_w exactly as stated
+    # Section default for clay surface conductivity, used only by units that
+    # name neither a mineral nor a lithology. 0.5 S/m is an illite-ish middle.
+    gσc  = get(get(cfg, "petrophysics", Dict()), "sigma_clay", 0.5)
 
     # ── geometry: resolve tops and bottoms from `top`, `thickness`, or both
     n = length(raw)
@@ -117,7 +123,7 @@ function load_config(path::AbstractString)
     for (i, u) in enumerate(raw)
         nm   = get(u, "name", "unit $i")
         pre  = haskey(u, "lithology") ? lithology(u["lithology"]) :
-               (φ = NaN, clay = NaN, sd_φ = gsdφ, sd_clay = gsdc)
+               (φ = NaN, clay = NaN, sd_φ = gsdφ, sd_clay = gsdc, mineral = "illite")
         φ    = get(u, "phi",  pre.φ)
         clay = get(u, "clay", pre.clay)
         isnan(φ)    && error("unit \"$nm\": needs `phi` or a `lithology`")
@@ -130,10 +136,19 @@ function load_config(path::AbstractString)
         0 < φ < 1     || error("unit \"$nm\": phi $φ is not in (0,1)")
         0 <= clay <= 1 || error("unit \"$nm\": clay $clay is not in [0,1]")
         σw > 0        || error("unit \"$nm\": sigma_w must be positive")
+        # Clay surface conductivity, in order: an explicit value, the mineral
+        # named on the unit, the mineral implied by its lithology, the section
+        # default. Naming both a mineral and a value is a contradiction.
+        haskey(u, "clay_mineral") && haskey(u, "sigma_clay") &&
+            error("unit \"$nm\": give `clay_mineral` or `sigma_clay`, not both")
+        σc = haskey(u, "sigma_clay")   ? u["sigma_clay"] :
+             haskey(u, "clay_mineral") ? sigma_clay_for(u["clay_mineral"]) :
+             haskey(u, "lithology")    ? sigma_clay_for(pre.mineral) : gσc
+        σc > 0 || error("unit \"$nm\": sigma_clay must be positive")
         push!(units, Unit(tops[i], bots[i], nm, φ, get(u, "S", 1.0), clay, σw,
                           get(u, "sd_phi",     haskey(u,"lithology") ? pre.sd_φ    : gsdφ),
                           get(u, "sd_clay",    haskey(u,"lithology") ? pre.sd_clay : gsdc),
-                          get(u, "sd_sigma_w", gsdw)))
+                          get(u, "sd_sigma_w", gsdw), σc))
     end
     units, cfg
 end
@@ -224,12 +239,18 @@ function build_column(units::Vector{Unit}, cfg::Dict)
     clay = clamp.(clay0 .* exp.(gp_draw(z; corr = corr, seed = seed + 2) .* sdc_z), 0.0, 1.0)
     σw   = σw           .* exp.(gp_draw(z; corr = corr, seed = seed + 3) .* sdw_z)
 
+    # Surface conduction is a per-unit property now, carried down the section as
+    # a depth profile like the others, so a kaolinitic sand and a smectitic clay
+    # are not forced to conduct alike.
+    σc_z = unit_field(z, units, trans, u -> u.σ_clay)
+
     θ_total = φ .* S
     θ_SMR   = θ_total .* (1 .- clay) .^ p_clay      # free water: NMR sees this
-    σ_bulk  = σw .* θ_total .^ m .+ σ_clay .* clay  # bulk conductivity: AEM sees this
+    σ_bulk  = σw .* θ_total .^ m .+ σc_z .* clay    # bulk conductivity: AEM sees this
 
     Column(z, dz, φ, S, clay, σw, θ_total, θ_SMR, σ_bulk, units, trans,
-           (p_clay = p_clay, m_archie = m, sigma_clay = σ_clay), cfg)
+           (p_clay = p_clay, m_archie = m, sigma_clay = σ_clay,
+            sigma_clay_profile = σc_z), cfg)
 end
 
 build_column(path::AbstractString) = build_column(load_config(path)...)
@@ -248,15 +269,16 @@ function Base.show(io::IO, c::Column)
     name = get(c.cfg, "name", "unnamed")
     @printf(io, "synthetic column \"%s\" — %d units, %.2f m grid to %.0f m\n",
             name, length(c.units), c.dz, c.z[end])
-    @printf(io, "petrophysics: p_clay %.2f, m %.2f, sigma_clay %.2f S/m\n",
-            c.petro.p_clay, c.petro.m_archie, c.petro.sigma_clay)
-    @printf(io, "%-34s %6s %6s %6s %8s %9s %8s\n",
-            "unit", "phi", "S", "clay", "sigma_w", "theta_SMR", "sigma_b")
+    @printf(io, "petrophysics: p_clay %.2f, m %.2f; sigma_clay is per unit\n",
+            c.petro.p_clay, c.petro.m_archie)
+    @printf(io, "%-34s %6s %6s %6s %8s %8s %9s %8s\n",
+            "unit", "phi", "S", "clay", "sig_clay", "sigma_w", "theta_SMR", "sigma_b")
     for u in c.units
         u.bot - u.top < 2 && continue
-        @printf(io, "%-34s %6.2f %6.2f %6.2f %8.3f %9.3f %8.4f\n", u.name,
+        @printf(io, "%-34s %6.2f %6.2f %6.2f %8.2f %8.3f %9.3f %8.4f\n", u.name,
                 unit_mean(c, c.φ, u), unit_mean(c, c.S, u), unit_mean(c, c.clay, u),
-                unit_mean(c, c.σw, u), unit_mean(c, c.θ_SMR, u), unit_mean(c, c.σ_bulk, u))
+                u.σ_clay, unit_mean(c, c.σw, u), unit_mean(c, c.θ_SMR, u),
+                unit_mean(c, c.σ_bulk, u))
     end
 end
 
@@ -276,7 +298,7 @@ extractable bar on free water.
 """
 function check_column(c::Column; theta_bar = 0.15, io = stdout)
     warn = String[]
-    σc, m = c.petro.sigma_clay, c.petro.m_archie
+    m = c.petro.m_archie
     us = [u for u in c.units if thickness(u) >= 2.0]
 
     println(io, "\nconductivity budget and extractability")
@@ -286,7 +308,7 @@ function check_column(c::Column; theta_bar = 0.15, io = stdout)
     for u in us
         σb = unit_mean(c, c.σ_bulk, u); θ = unit_mean(c, c.θ_SMR, u)
         cl = unit_mean(c, c.clay, u);   sw = unit_mean(c, c.σw, u)
-        ct = σc * cl; pct = 100ct / σb
+        ct = u.σ_clay * cl; pct = 100ct / σb
         ex = θ > theta_bar
         @printf(io, "%-30s %9.4f %9.4f %7.0f%% %9.3f %12s\n",
                 u.name, σb, ct, pct, θ, ex ? "yes" : "no")

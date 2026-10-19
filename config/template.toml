@@ -16,6 +16,8 @@ zmax = 150.0       # model base — must be at or below the last unit's base
 p_clay     = 1.5   # theta_SMR = phi * S * (1-clay)^p_clay
 m_archie   = 1.7   # sigma_w * theta^m
 sigma_clay = 0.5   # S/m per unit clay fraction. ~0.15 kaolinite, ~0.5 illite,
+                   # SECTION DEFAULT only. Surface conduction is per unit:
+                   # name `clay_mineral` or set `sigma_clay` on each unit.
                    # ~2.0 smectite. This constant does a lot of work — see
                    # examples/03_why_clay_matters.jl before trusting a salinity.
 
@@ -66,3 +68,23 @@ name = "basement"
 lithology = "fresh bedrock"
 sigma_w_mgL = 5000
 # no thickness on the last unit: it runs to grid.zmax
+
+# ── clay mineralogy ──────────────────────────────────────────────────────────
+# Clay conducts at its grain surfaces in proportion to cation exchange capacity,
+# which differs by more than ten times across the common clay minerals. Give a
+# unit either a mineral or an explicit surface conductivity, not both:
+#
+#   clay_mineral = "kaolinite"   # CEC  3-15 meq/100g  -> 0.15 S/m
+#   clay_mineral = "illite"      # CEC 10-40           -> 0.50 S/m
+#   clay_mineral = "mixed"       # mixed-layer         -> 0.80 S/m
+#   clay_mineral = "smectite"    # CEC 80-150          -> 2.00 S/m
+#   sigma_clay   = 0.35          # or state it directly, S/m per unit clay
+#
+# Naming a `lithology` picks a default mineral for you (sands kaolinitic, clays
+# illitic); an explicit `clay_mineral` or `sigma_clay` overrides it.
+#
+# These are indicative, not measured. CEC is rarely measured in practice, and
+# natural gamma — the usual clay log — responds to illite far more than to
+# kaolinite or smectite, so clay TYPE is normally inferred from depositional
+# environment. Treat the choice as an assumption to test, not an input you know:
+# it is often the single largest control on whether salinity is recoverable.

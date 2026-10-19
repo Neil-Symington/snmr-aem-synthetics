@@ -33,6 +33,49 @@ julia --project=. scripts/forward.jl     output/confined_aquifer_truth.jld2
 `build_truth.jl` prints the section as built, with the derived observables per
 unit measured clear of the gradational boundaries, and writes a JLD2.
 
+
+### Clay mineralogy
+
+Clay conducts at its grain surfaces, and how strongly depends on cation
+exchange capacity — which spans more than an order of magnitude across the
+common clay minerals. Surface conduction is therefore a **per-unit** property,
+not one constant for the section:
+
+```toml
+[[unit]]
+name = "Calivil Fm — AQUIFER"
+lithology = "sand"
+clay_mineral = "kaolinite"      # highland-derived quartz sand
+sigma_w_mgL = 600
+
+[[unit]]
+name = "Blanchetown Clay"
+lithology = "clay"
+clay_mineral = "mixed"          # or set sigma_clay = 0.8 directly
+sigma_w = 0.30
+```
+
+| mineral | CEC (meq/100 g) | σ_clay (S/m per unit clay) |
+| --- | --- | --- |
+| kaolinite | 3–15 | 0.15 |
+| illite | 10–40 | 0.50 |
+| mixed | 10–80 | 0.80 |
+| smectite | 80–150 | 2.00 |
+
+A `lithology` picks a default mineral (sands kaolinitic, clays illitic);
+`clay_mineral` or `sigma_clay` on the unit overrides it. Give one or the other,
+not both.
+
+**Treat the choice as an assumption to test, not an input you know.** CEC is
+rarely measured, and natural gamma — the usual clay log — responds to illite far
+more than to kaolinite or smectite, so clay *type* is normally inferred from
+depositional environment rather than logged. `examples/03_why_clay_matters.jl`
+shows why it matters: with the conductivity known exactly, assuming kaolinite
+where the truth is illite infers a salinity 4.6 times too high, which is the
+difference between fresh and brackish. `check_column` reports each unit's split
+between water-carried and clay-carried conductivity so you can see before
+running anything whether salinity is recoverable at all.
+
 ## Examples first
 
 Three short scripts in `examples/`, none longer than a few seconds and none
